@@ -1,5 +1,6 @@
-use image::{GenericImageView, Rgba};
+use image::Rgba;
 use steganography::encoder::Encoder;
+use steganography::decoder::Decoder;
 use tokio::fs;
 use tokio::sync::mpsc;
 
@@ -13,8 +14,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let default_img_path = "def_img.jpg".to_string();
     let default_img = steganography::util::file_as_dynamic_image(default_img_path);
-
-    println!("Default image dimensions: {:?}", default_img.dimensions());
 
     let secret_bytes = fs::read("img2.jpg").await?;
     
@@ -34,11 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let image = Image{ dims : encoded_img.dimensions(),
             data:encoded_img.into_raw()
         };
-
-        println!("Encoded image dimensions: {:?}", image.dims);
         tx2.send(image).await.expect("Failed to send stegnogrified image");
+        println!("Image stegnogrified and saved successfully!");
     });
 
+    
     // Receive the encrypted image bytes from the main thread
     let endoed_image = rx2.recv().await.expect("Failed to receive stegnogrified image");
 
@@ -48,9 +47,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let image_buffer: image::ImageBuffer<Rgba<u8>, Vec<u8>> = image::ImageBuffer::from_raw(endoed_image.dims.0, endoed_image.dims.1, endoed_image.data).unwrap();
     steganography::util::save_image_buffer(image_buffer.clone(), output_path);
 
+    // Decode the image to extract the secret bytes
+    let decoder = Decoder::new(image_buffer);
+    let decoded_bytes = decoder.decode_alpha();
+
+    let output_path = "decoded_img.jpg";
+    fs::write(output_path, decoded_bytes).await?;
+
+    println!("Image decoded and saved successfully!");
+
 
     encryption_handle.await.expect("Thread join failed");
-    println!("Image stegnogrified and saved successfully!");
 
     Ok(())
 
